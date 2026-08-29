@@ -110,6 +110,42 @@ export function applyUpdates<T extends object>(
   return next;
 }
 
+/** Does this row match the tab's contract header? Case- and space-insensitive. */
+export function isHeaderRow(tab: TabName, row: readonly string[] | undefined): boolean {
+  if (!row) return false;
+  const expected = TAB_HEADERS[tab];
+  if (row.length < expected.length) return false;
+  return expected.every((column, i) => normaliseHeader(row[i] ?? '') === normaliseHeader(column));
+}
+
+function normaliseHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/**
+ * Describe what is wrong with a header row, for an actionable error.
+ * Returns null when the header is fine.
+ */
+export function describeHeaderProblem(tab: TabName, row: readonly string[] | undefined): string | null {
+  if (isHeaderRow(tab, row)) return null;
+  const expected = TAB_HEADERS[tab];
+  if (!row || row.length === 0) return `${tab} is missing its header row`;
+
+  const missing = expected.filter(
+    (column) => !row.some((cell) => normaliseHeader(cell) === normaliseHeader(column)),
+  );
+  // No column matched at all: this is a data row sitting where the header
+  // should be, not a header with columns missing. Saying "missing 16 columns"
+  // sends people looking for the wrong problem.
+  if (missing.length === expected.length) {
+    return `${tab} is missing its header row (the first row looks like data)`;
+  }
+  if (missing.length > 0) {
+    return `${tab} header is missing column(s): ${missing.join(', ')}`;
+  }
+  return `${tab} header columns are in the wrong order`;
+}
+
 /** Row index (0-based, excluding the header) of the first match, or -1. */
 export function findRowIndex(rows: readonly (readonly string[])[], column: number, value: string): number {
   return rows.findIndex((row) => (row[column] ?? '').trim() === value.trim());

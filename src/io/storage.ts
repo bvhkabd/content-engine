@@ -21,8 +21,12 @@ export interface Storage {
 
 /** Thrown when a required file is absent, so callers can exit with a clear message. */
 export class FileNotFoundError extends Error {
-  constructor(readonly path: string, location: string) {
-    super(`File not found: ${path} (in ${location})`);
+  constructor(
+    readonly path: string,
+    location: string,
+    hint?: string,
+  ) {
+    super(`File not found: ${path}\n  Looked in: ${location}${hint ? `\n  ${hint}` : ''}`);
     this.name = 'FileNotFoundError';
   }
 }

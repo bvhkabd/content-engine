@@ -9,6 +9,8 @@ import { createSheetStore, createStorage } from '../config/context.js';
 import { loadEnv } from '../config/env.js';
 import { loadTenantConfig, missingReferenceFiles, bundleSize } from '../config/tenant.js';
 import { TENANT_SUBFOLDERS, TenantPaths, joinPath } from '../io/storage.js';
+import { TABS, TAB_HEADERS, describeHeaderProblem, type TabName } from '../io/sheets.js';
+import { parseCsv } from '../io/csv.js';
 import { notificationsEnabled } from '../io/notify.js';
 import { heading, info, style } from '../ui/console.js';
 
@@ -120,6 +122,34 @@ export async function runDoctor(options: DoctorOptions): Promise<boolean> {
       ? 'all present'
       : `missing: ${missingRefs.join(', ')} — drafts will run with thinner guidance`,
   );
+
+  // --- sheet files ---------------------------------------------------------
+  // Checked before reading through the sheet store, so a broken header is
+  // reported as a finding rather than surfacing as an exception below.
+  if (env.storageBackend === 'local') {
+    const sheetsDir = TenantPaths.sheets(options.tenant);
+    if (!(await storage.exists(sheetsDir)) && (await storage.list(sheetsDir)).length === 0) {
+      add('fail', 'sheets folder', `missing: ${sheetsDir} — run init to create it`);
+    } else {
+      add('ok', 'sheets folder', sheetsDir);
+    }
+
+    for (const tab of Object.values(TABS) as TabName[]) {
+      const path = TenantPaths.sheet(options.tenant, tab);
+      if (!(await storage.exists(path))) {
+        add('fail', `${tab}.csv`, `missing — run init to recreate it`);
+        continue;
+      }
+      const rows = parseCsv(await storage.readFile(path));
+      const problem = describeHeaderProblem(tab, rows[0]);
+      if (problem) {
+        add('fail', `${tab}.csv`, `${problem}. Expected: ${TAB_HEADERS[tab].join(',')}`);
+      } else {
+        const dataRows = rows.slice(1).filter((r) => r.some((c) => c.trim() !== '')).length;
+        add('ok', `${tab}.csv`, `header correct, ${dataRows} data row(s)`);
+      }
+    }
+  }
 
   // --- sheet ---------------------------------------------------------------
   try {

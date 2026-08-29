@@ -186,16 +186,48 @@ program
     if (!result.healthy) process.exitCode = 1;
   });
 
-program
-  .command('doctor')
-  .description('Check credentials, config and data-layer wiring without calling the LLM')
-  .requiredOption('--tenant <name>', 'tenant key')
-  .action(async (options) => {
-    const ok = await runDoctor({ tenant: options.tenant });
-    if (!ok) process.exitCode = 1;
-  });
+// `validate` and `doctor` are the same check. Two names because "validate" is
+// what you reach for before a session, and "doctor" is what you reach for when
+// something is already broken.
+for (const name of ['validate', 'doctor'] as const) {
+  program
+    .command(name)
+    .description(
+      name === 'validate'
+        ? 'Check setup before a session: folders, sheet headers, template files, credentials'
+        : 'Alias of validate — check credentials, config and data-layer wiring (no LLM calls)',
+    )
+    .requiredOption('--tenant <name>', 'tenant key')
+    .action(async (options) => {
+      const ok = await runDoctor({ tenant: options.tenant });
+      if (!ok) process.exitCode = 1;
+    });
+}
 
 // ---------------------------------------------------------------------------
+
+/**
+ * Pull --tenant back out of argv so error messages can name it. Parsing has
+ * usually already failed by the time we need this, so read it directly.
+ */
+function tenantFromArgv(argv: string[]): string | null {
+  const index = argv.indexOf('--tenant');
+  const value = index === -1 ? undefined : argv[index + 1];
+  return value && !value.startsWith('-') ? value : null;
+}
+
+/** Point setup failures at the command that diagnoses them. */
+function remediationFor(message: string, tenant: string | null): string | null {
+  if (!tenant) return null;
+  // `validate` already is the diagnosis — telling someone to run it is a loop.
+  if (process.argv.includes('validate') || process.argv.includes('doctor')) return null;
+
+  const looksLikeSetup =
+    /file not found|not found in|missing|does not exist|header|no such file|could not read/i.test(message);
+  if (!looksLikeSetup) return null;
+
+  return `Check your setup:  npm run cli -- validate --tenant ${tenant}`;
+}
 
 async function main(): Promise<void> {
   try {
@@ -204,6 +236,10 @@ async function main(): Promise<void> {
     const message = error instanceof Error ? error.message : String(error);
     console.error('');
     failure(message);
+
+    const hint = remediationFor(message, tenantFromArgv(process.argv));
+    if (hint) console.error(`\n${hint}`);
+
     if (process.env.DEBUG && error instanceof Error && error.stack) {
       console.error(style.dim(error.stack));
     } else {

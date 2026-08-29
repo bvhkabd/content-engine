@@ -12,6 +12,7 @@ import {
   TABS,
   TAB_HEADERS,
   applyUpdates,
+  describeHeaderProblem,
   findRowIndex,
   type SheetStore,
   type TabName,
@@ -32,12 +33,30 @@ export class LocalSheetStore implements SheetStore {
     return TenantPaths.sheet(this.tenant, tab);
   }
 
-  /** Rows below the header. */
+  /**
+   * Rows below the header.
+   *
+   * The header is verified rather than assumed. Blindly dropping row 1 means a
+   * hand-created file with no header silently loses its first record — the row
+   * is in the file, but `topics` never shows it and `session` reports the spike
+   * as missing. Refusing to read is the only safe response.
+   */
   private async read(tab: TabName): Promise<string[][]> {
     const path = this.path(tab);
     if (!(await this.storage.exists(path))) return [];
     const rows = parseCsv(await this.storage.readFile(path));
     if (rows.length === 0) return [];
+
+    const problem = describeHeaderProblem(tab, rows[0]);
+    if (problem) {
+      throw new Error(
+        `${problem}, in ${path}.\n` +
+          `Expected first row: ${TAB_HEADERS[tab].join(',')}\n` +
+          `Found first row:    ${(rows[0] ?? []).join(',')}\n` +
+          'Add the header row back — without it the first record is read as a header and lost.',
+      );
+    }
+
     // Drop the header, then drop fully-blank rows (trailing newlines, manual edits).
     return rows.slice(1).filter((row) => row.some((cell) => cell.trim() !== ''));
   }
