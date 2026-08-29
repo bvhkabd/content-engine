@@ -14,6 +14,7 @@ import { runApprove } from './skills/approve.js';
 import { dailyOracle } from './jobs/oracle.js';
 import { watchdog } from './jobs/watchdog.js';
 import { runDoctor } from './skills/doctor.js';
+import { runSources } from './skills/sources.js';
 import { failure, style } from './ui/console.js';
 
 const program = new Command();
@@ -152,6 +153,21 @@ program
       dryRun: Boolean(options.dryRun),
       sinceDays: options.sinceDays,
     });
+  });
+
+program
+  .command('sources')
+  .description('Probe each oracle source independently and report what came back')
+  .requiredOption('--tenant <name>', 'tenant key')
+  .option('--since-days <n>', 'lookback window (default 7)', positiveInt)
+  .option('--only <name>', 'probe one source: inbox | transcripts | dossiers')
+  .action(async (options) => {
+    const ok = await runSources({
+      tenant: options.tenant,
+      sinceDays: options.sinceDays,
+      only: options.only,
+    });
+    if (!ok) process.exitCode = 1;
   });
 
 program

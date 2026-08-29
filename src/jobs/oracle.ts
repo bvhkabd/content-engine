@@ -55,7 +55,7 @@ export async function dailyOracle(options: OracleOptions): Promise<OracleResult>
     heading(`Oracle — ${ctx.tenant} — ${today}`);
 
     const vault = await ctx.sheet.readVault();
-    const seenRefs = new Set(vault.map((s) => s.source_ref.trim()).filter(Boolean));
+    const seenRefs = expandSourceRefs(vault);
 
     // 1. Gather.
     const documents = await gatherSources(ctx, options, seenRefs);
@@ -201,6 +201,29 @@ interface ExtractionPayload {
 /** Batch documents so one oversized prompt cannot swallow the whole run. */
 const DOCS_PER_CALL = 4;
 
+/** Separator for the multi-source fallback in the Source Ref column. */
+export const REF_SEPARATOR = '; ';
+
+/**
+ * Every source reference already represented in the vault, as individual refs.
+ *
+ * A spike attributed to one document stores one reference; an unattributed one
+ * stores the whole batch joined by REF_SEPARATOR. Splitting here means a single
+ * incoming document matches either form — without this, batched rows never
+ * match an individual message ID and the oracle re-creates the same spikes on
+ * every run.
+ */
+export function expandSourceRefs(spikes: readonly SpikeRecord[]): Set<string> {
+  const refs = new Set<string>();
+  for (const spike of spikes) {
+    for (const part of spike.source_ref.split(REF_SEPARATOR)) {
+      const trimmed = part.trim();
+      if (trimmed) refs.add(trimmed);
+    }
+  }
+  return refs;
+}
+
 async function extractCandidates(
   ctx: RunContext,
   documents: SourceDocument[],
@@ -242,11 +265,11 @@ function normaliseCandidates(
 ): CandidateSpike[] {
   if (!Array.isArray(value)) return [];
   const fallbackBrand = activeBrands[0]!;
-  // The model is not asked to echo which document a spike came from, so
-  // attribute the batch: one document batches are exact, larger ones are a
-  // pointer to the right handful.
-  const reference = batch.map((d) => d.reference).join('; ');
-  const kind = [...new Set(batch.map((d) => d.kind))].join('+');
+  // Fallback when the model does not attribute a spike to one source. Kept as
+  // a joined list rather than dropped, so the row still points somewhere —
+  // expandSourceRefs() splits it back apart for deduplication.
+  const allRefs = batch.map((d) => d.reference).join(REF_SEPARATOR);
+  const allKinds = [...new Set(batch.map((d) => d.kind))].join('+');
 
   return value
     .map((raw): CandidateSpike | null => {
@@ -259,6 +282,12 @@ function normaliseCandidates(
       const proposed = String(e.brand ?? '').trim();
       const brand = activeBrands.find((b) => b.toLowerCase() === proposed.toLowerCase()) ?? fallbackBrand;
 
+      // Attribute to one source document when the model says which. This is
+      // what makes the next run's dedupe exact rather than approximate.
+      const index = Number(e.source_index);
+      const attributed =
+        Number.isInteger(index) && index >= 1 && index <= batch.length ? batch[index - 1] : undefined;
+
       return {
         brand,
         topic,
@@ -270,8 +299,8 @@ function normaliseCandidates(
         novelty: Number(e.novelty ?? 0),
         specificity: Number(e.specificity ?? 0),
         relevance: Number(e.relevance ?? 0),
-        source: kind,
-        source_ref: reference,
+        source: attributed?.kind ?? allKinds,
+        source_ref: attributed?.reference ?? allRefs,
       };
     })
     .filter((c): c is CandidateSpike => c !== null);

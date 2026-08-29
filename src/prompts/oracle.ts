@@ -11,6 +11,7 @@ import { jsonOnlyInstruction, joinSections, optionalSection, section } from './s
 const SPIKE_SHAPE = `{
   "spikes": [
     {
+      "source_index": 1,
       "brand": "string — one of the active brands listed above",
       "topic": "string — 3 to 10 words, the subject itself, not a headline",
       "angle": "string — one sentence: the specific argument or claim to make",
@@ -90,6 +91,9 @@ export function extractSpikesPrompt(
       '- relevance: fit with the positioning, audiences and pillars.',
       '',
       'Assign each spike to exactly one active brand.',
+      'Set source_index to the number of the source the spike came from, as headed above ' +
+        '("Source 1", "Source 2", …). This is how the spike is traced back and deduplicated, ' +
+        'so it must be right. If a spike genuinely draws on more than one source, name the primary one.',
       'At most 3 spikes per source. If a source yields nothing, skip it.',
     ].join('\n'),
     jsonOnlyInstruction(SPIKE_SHAPE),

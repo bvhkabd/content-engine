@@ -75,6 +75,10 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
     const uids = await client.search({ since }, { uid: true });
     const recent = (uids || []).slice(-limit);
 
+    // An empty label is normal — nothing filed this week. Fetching an empty
+    // UID set is an invalid range, so return early rather than let it throw.
+    if (recent.length === 0) return [];
+
     for await (const message of client.fetch(recent, { source: true, envelope: true }, { uid: true })) {
       if (!message.source) continue;
       const parsed = await simpleParser(message.source);
