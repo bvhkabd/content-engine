@@ -9,6 +9,7 @@ import { Command, InvalidArgumentError } from 'commander';
 import { runInit } from './skills/init.js';
 import { showTopics } from './skills/topics.js';
 import { runSession } from './skills/session.js';
+import { runInterview } from './skills/interview.js';
 import { runApprove } from './skills/approve.js';
 import { dailyOracle } from './jobs/oracle.js';
 import { watchdog } from './jobs/watchdog.js';
@@ -75,6 +76,26 @@ program
       limit: options.limit,
       brand: options.brand,
       json: Boolean(options.json),
+    });
+  });
+
+program
+  .command('interview')
+  .description('Adaptive interview: each question is generated from your last answer')
+  .requiredOption('--tenant <name>', 'tenant key')
+  .requiredOption('--spike <id>', 'spike ID, e.g. SPIKE-20260815-001')
+  .option('--author <key>', 'override the author from the spike row')
+  .option('--brand <key>', 'override the brand from the spike row')
+  .option('--channel <key>', 'channel this will be written for')
+  .option('--questions <n>', 'question ceiling (default 12)', positiveInt)
+  .action(async (options) => {
+    await runInterview({
+      tenant: options.tenant,
+      spikeId: options.spike,
+      author: options.author,
+      brand: options.brand,
+      channel: options.channel,
+      questions: options.questions,
     });
   });
 
