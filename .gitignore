@@ -3,6 +3,9 @@ node_modules/
 .env.local
 dist/
 .DS_Store
-tenants/
 *.log
 credentials/
+
+# Data layer. Tenant content lives in Google Drive (or a local mirror) and is
+# never committed — see CLAUDE_CODE_BRIEF.md "Non-negotiables".
+tenants/

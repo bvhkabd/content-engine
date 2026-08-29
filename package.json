@@ -1,0 +1,41 @@
+{
+  "name": "content-engine",
+  "version": "1.0.0",
+  "description": "Multi-tenant content orchestration: interview → write → critic → bundle.",
+  "type": "module",
+  "bin": {
+    "content-engine": "./src/cli.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "cli": "tsx src/cli.ts",
+    "init": "tsx src/cli.ts init",
+    "session": "tsx src/cli.ts session",
+    "topics": "tsx src/cli.ts topics",
+    "approve": "tsx src/cli.ts approve",
+    "oracle": "tsx src/cli.ts oracle",
+    "watchdog": "tsx src/cli.ts watchdog",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "dotenv": "^16.4.5",
+    "googleapis": "^176.0.0",
+    "imapflow": "^1.0.164",
+    "mailparser": "^3.7.1",
+    "nodemailer": "^9.0.6",
+    "yaml": "^2.5.1"
+  },
+  "devDependencies": {
+    "@types/mailparser": "^3.4.4",
+    "@types/node": "^22.5.4",
+    "@types/nodemailer": "^6.4.15",
+    "tsx": "^4.19.1",
+    "typescript": "^5.6.2",
+    "vitest": "^4.1.11"
+  }
+}
