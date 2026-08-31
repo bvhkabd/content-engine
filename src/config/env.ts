@@ -34,6 +34,20 @@ function optional(name: string): string | undefined {
   return value ? value : undefined;
 }
 
+/**
+ * A Gmail app password with the spaces taken out.
+ *
+ * Google shows app passwords as four groups of four ("abcd efgh ijkl mnop") and
+ * people paste them exactly as shown. IMAP sends the literal string, so the
+ * spaces turn a valid 16-character secret into an invalid 19-character one and
+ * Gmail answers "Invalid credentials" — which reads like a wrong password
+ * rather than a formatting problem.
+ */
+function appPassword(name: string): string | undefined {
+  const value = process.env[name]?.replace(/\s+/g, '');
+  return value ? value : undefined;
+}
+
 export function loadEnv(): Env {
   const backend = (optional('STORAGE_BACKEND') ?? 'local').toLowerCase();
   if (backend !== 'local' && backend !== 'google') {
@@ -50,7 +64,7 @@ export function loadEnv(): Env {
     openrouterBaseUrl: optional('OPENROUTER_BASE_URL'),
     googleCredentialsJson: optional('GOOGLE_CREDENTIALS_JSON'),
     googleDriveRootFolderId: optional('GOOGLE_DRIVE_ROOT_FOLDER_ID'),
-    gmailAppPassword: optional('GMAIL_APP_PASSWORD'),
+    gmailAppPassword: appPassword('GMAIL_APP_PASSWORD'),
     firefliesApiKey: optional('FIREFLIES_API_KEY'),
     notify: {
       host: optional('NOTIFY_SMTP_HOST'),

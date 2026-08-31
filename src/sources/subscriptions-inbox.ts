@@ -20,6 +20,9 @@ export interface InboxOptions {
   host?: string;
   port?: number;
   limit?: number;
+  connectionTimeoutMs?: number;
+  greetingTimeoutMs?: number;
+  socketTimeoutMs?: number;
 }
 
 export interface InboxMessage {
@@ -43,8 +46,15 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
     host: options.host ?? 'imap.gmail.com',
     port: options.port ?? 993,
     secure: true,
-    auth: { user: email, pass: appPassword },
+    // Spaces stripped here as well as in env loading: this function is also
+    // called directly from tests and scripts.
+    auth: { user: email, pass: appPassword.replace(/\s+/g, '') },
     logger: false,
+    // Without these, a stalled connection hangs the oracle indefinitely
+    // instead of failing with something you can act on.
+    connectionTimeout: options.connectionTimeoutMs ?? 15_000,
+    greetingTimeout: options.greetingTimeoutMs ?? 10_000,
+    socketTimeout: options.socketTimeoutMs ?? 60_000,
   });
 
   const messages: InboxMessage[] = [];
@@ -54,20 +64,20 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
   try {
     await client.connect();
   } catch (error) {
-    throw new Error(
-      `Could not connect to ${options.host ?? 'imap.gmail.com'} as ${email}: ${(error as Error).message}\n` +
-        'Check GMAIL_APP_PASSWORD (a 16-character app password, not your account password) ' +
-        'and that IMAP is enabled in Gmail settings.',
-    );
+    throw new Error(describeConnectFailure(error, email, options.host ?? 'imap.gmail.com'));
   }
 
   let lock: { release: () => void } | undefined;
   try {
     const mailbox = await resolveMailbox(client, label);
     if (!mailbox) {
+      const available = userLabels((await client.list()).map((box) => box.path));
       throw new Error(
-        `Gmail label "${label}" not found for ${email}. Create the label, or change ` +
-          'sources.subscriptions_inbox.label in tenant.yaml.',
+        `Gmail label "${label}" not found for ${email}.\n` +
+          (available.length
+            ? `Labels in this account: ${available.join(', ')}\n` +
+              'Set sources.subscriptions_inbox.label in tenant.yaml to one of these.'
+            : 'This account has no custom labels yet — create one and file some mail under it.'),
       );
     }
 
@@ -100,18 +110,81 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
   return messages;
 }
 
-/** Gmail nests custom labels differently across accounts; try the variants. */
+/**
+ * Separate the failure modes, because the remedies have nothing in common.
+ * Blaming the password for a network timeout sends people to re-generate a
+ * credential that was never the problem.
+ */
+export function describeConnectFailure(error: unknown, email: string, host: string): string {
+  const err = error as { responseText?: string; message?: string; code?: string };
+  const detail = err?.responseText ?? err?.message ?? String(error);
+  const lower = detail.toLowerCase();
+
+  if (lower.includes('invalid credentials') || lower.includes('authenticationfailed')) {
+    return (
+      `Gmail rejected the credentials for ${email}: ${detail}\n` +
+      'Most common causes, in order:\n' +
+      '  1. GMAIL_APP_PASSWORD is your account password, not an app password.\n' +
+      '  2. The app password was revoked, or belongs to a different account.\n' +
+      '  3. 2-Step Verification is off — app passwords do not exist without it.\n' +
+      'Generate one at: Google Account → Security → 2-Step Verification → App passwords.\n' +
+      'Spaces in the value are fine; they are stripped automatically.'
+    );
+  }
+
+  if (lower.includes('timeout') || lower.includes('timed out') || err?.code === 'ETIMEDOUT') {
+    return (
+      `Timed out connecting to ${host} as ${email}: ${detail}\n` +
+      'This is a network problem, not a credential problem — the password is never sent.\n' +
+      '  • Port 993 outbound may be blocked (corporate network, VPN, or ISP).\n' +
+      `  • Test the path directly:  openssl s_client -connect ${host}:993 -crlf\n` +
+      '  • If that also hangs, no change to authentication will help.'
+    );
+  }
+
+  if (err?.code === 'ENOTFOUND' || err?.code === 'EAI_AGAIN') {
+    return `Could not resolve ${host} (${err.code}). Check DNS and your network connection.`;
+  }
+
+  return `Could not connect to ${host} as ${email}: ${detail}`;
+}
+
+/**
+ * Find the mailbox for a label.
+ *
+ * Gmail nests custom labels differently across accounts, and a label written
+ * as "#Postideas" is stored as "Postideas" — the hash is how people write
+ * labels, not part of the name. Both forms are accepted.
+ */
 async function resolveMailbox(client: ImapFlow, label: string): Promise<string | null> {
   const list = await client.list();
-  const names = list.map((box) => box.path);
-  const candidates = [label, `[Gmail]/${label}`, `INBOX/${label}`];
-  for (const candidate of candidates) {
-    if (names.includes(candidate)) return candidate;
+  const names = new Set(list.map((box) => box.path));
+
+  // Try the label as given and with a leading #/ stripped.
+  const forms = [label, label.replace(/^[#/]+/, '')].filter(
+    (form, i, all) => form !== '' && all.indexOf(form) === i,
+  );
+
+  for (const form of forms) {
+    for (const candidate of [form, `[Gmail]/${form}`, `INBOX/${form}`]) {
+      if (names.has(candidate)) return candidate;
+    }
   }
-  // Fall back to a case-insensitive match on the leaf name.
-  const leaf = label.toLowerCase();
-  const found = list.find((box) => (box.name ?? '').toLowerCase() === leaf);
-  return found?.path ?? null;
+
+  // Case-insensitive match on the leaf name.
+  for (const form of forms) {
+    const leaf = form.toLowerCase();
+    const found = list.find(
+      (box) => (box.name ?? '').toLowerCase() === leaf || box.path.toLowerCase() === leaf,
+    );
+    if (found) return found.path;
+  }
+  return null;
+}
+
+/** Labels a person could plausibly have meant, for the not-found error. */
+export function userLabels(paths: readonly string[]): string[] {
+  return paths.filter((path) => path !== 'INBOX' && !path.startsWith('[Gmail]')).sort();
 }
 
 function stripHtml(html: string): string {
