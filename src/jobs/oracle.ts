@@ -138,12 +138,22 @@ async function gatherSources(
       name: 'subscriptions-inbox',
       enabled: ctx.config.sources.subscriptions_inbox.enabled,
       run: async () => {
-        const { email, label } = ctx.config.sources.subscriptions_inbox;
+        const { email, label, min_words, exclude_senders } = ctx.config.sources.subscriptions_inbox;
         const password = ctx.env.gmailAppPassword;
         if (!password) {
           throw new Error('GMAIL_APP_PASSWORD is not set');
         }
-        return emailDocs(await fetchPostIdeasEmails({ email, appPassword: password, label, sinceDays }));
+        return emailDocs(
+          await fetchPostIdeasEmails({
+            email,
+            appPassword: password,
+            label,
+            sinceDays,
+            minWords: min_words,
+            excludeSenders: exclude_senders,
+            onSkip: (reason) => ctx.log.info(`inbox skipped: ${reason}`),
+          }),
+        );
       },
     },
     {

@@ -23,7 +23,20 @@ export interface InboxOptions {
   connectionTimeoutMs?: number;
   greetingTimeoutMs?: number;
   socketTimeoutMs?: number;
+  /** Drop messages with fewer prose words than this after cleaning. */
+  minWords?: number;
+  /** Substring matches against the From header; matches are dropped. */
+  excludeSenders?: string[];
+  /** Called with one line per dropped message, for logging. */
+  onSkip?: (reason: string) => void;
 }
+
+/**
+ * Word floor for a message to be worth an LLM call. Set from a real inbox:
+ * platform digests land at 30-150 words after cleaning, the thinnest genuine
+ * newsletter at ~600.
+ */
+export const DEFAULT_MIN_WORDS = 200;
 
 export interface InboxMessage {
   subject: string;
@@ -58,6 +71,7 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
   });
 
   const messages: InboxMessage[] = [];
+  const skipped: string[] = [];
   const since = new Date(Date.now() - (options.sinceDays ?? 7) * 86_400_000);
   const limit = options.limit ?? 25;
 
@@ -89,15 +103,33 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
     // UID set is an invalid range, so return early rather than let it throw.
     if (recent.length === 0) return [];
 
+    const minWords = options.minWords ?? DEFAULT_MIN_WORDS;
+    const excluded = (options.excludeSenders ?? []).map((s) => s.toLowerCase());
+
     for await (const message of client.fetch(recent, { source: true, envelope: true }, { uid: true })) {
       if (!message.source) continue;
       const parsed = await simpleParser(message.source);
-      const body = (parsed.text ?? stripHtml(parsed.html || '')).trim();
+      const from = parsed.from?.text ?? '(unknown sender)';
+
+      if (excluded.some((pattern) => from.toLowerCase().includes(pattern))) {
+        skipped.push(`${parsed.subject ?? '(no subject)'} — excluded sender`);
+        continue;
+      }
+
+      const body = cleanEmailBody((parsed.text ?? stripHtml(parsed.html || '')).trim());
       if (!body) continue;
+
+      // Platform digests and notification mail carry almost no prose once the
+      // chrome is stripped; they are not worth a call.
+      if (!isSubstantive(body, minWords)) {
+        skipped.push(`${parsed.subject ?? '(no subject)'} — only ${wordCount(body)} words after cleaning`);
+        continue;
+      }
+
       messages.push({
         subject: parsed.subject ?? '(no subject)',
         body,
-        from: parsed.from?.text ?? '(unknown sender)',
+        from,
         messageId: parsed.messageId ?? `uid:${message.uid}`,
         date: (parsed.date ?? new Date()).toISOString().slice(0, 10),
       });
@@ -106,6 +138,9 @@ export async function fetchPostIdeasEmails(options: InboxOptions): Promise<Inbox
     lock?.release();
     await client.logout().catch(() => undefined);
   }
+
+  // Report what was dropped rather than silently shrinking the batch.
+  if (options.onSkip) for (const reason of skipped) options.onSkip(reason);
 
   return messages;
 }
@@ -198,6 +233,57 @@ function stripHtml(html: string): string {
     .replace(/&gt;/g, '>')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+/**
+ * Strip newsletter chrome so what reaches the oracle is mostly prose.
+ *
+ * Tracking pixels, bare URLs and "View this post on the web at …" preambles
+ * are a large share of a typical Substack email's extracted text. Left in,
+ * they consume the per-document truncation budget and give the model URL
+ * fragments to reason about instead of argument.
+ */
+export function cleanEmailBody(text: string): string {
+  return (
+    text
+      // Bracketed image/tracking URLs: [https://…]
+      .replace(/\[\s*https?:\/\/[^\]]*\]/gi, ' ')
+      // Substack/Beehiiv web-view preamble, plus the one URL that follows it.
+      // Deliberately bounded: an earlier version matched to end of line, and
+      // because stripHtml collapses HTML mail onto a single line that deleted
+      // the whole body of every HTML-only newsletter.
+      .replace(
+        /view (?:this )?(?:post|email|issue)?\s*(?:on|in)\s+(?:the\s+)?(?:web|browser)(?:\s+at)?\s*(?:https?:\/\/\S+)?/gi,
+        ' ',
+      )
+      // Bare URLs. Keep the domain — it is a useful provenance hint — drop the
+      // query strings and tracking tokens that make up most of the length.
+      .replace(/https?:\/\/([^\s<>)\]]+)/gi, (_match, rest: string) => {
+        const domain = String(rest).split('/')[0] ?? '';
+        return domain ? `(${domain})` : ' ';
+      })
+      // Common unsubscribe / preference footers.
+      .replace(/unsubscribe[^\n]*/gi, ' ')
+      .replace(/©\s*\d{4}[^\n]*/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  );
+}
+
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter(Boolean).length;
+}
+
+/**
+ * Is there enough prose here to be worth an LLM call?
+ *
+ * Platform digests ("X and 3 others posted new notes") survive HTML stripping
+ * as a few hundred words of teaser wrapped around tracking links. After
+ * cleaning they fall well below any real newsletter, so a word floor separates
+ * them without needing a sender blocklist.
+ */
+export function isSubstantive(body: string, minWords: number): boolean {
+  return wordCount(body) >= minWords;
 }
 
 export function toSourceDocuments(messages: readonly InboxMessage[]): SourceDocument[] {

@@ -115,12 +115,15 @@ function buildProbes(ctx: Awaited<ReturnType<typeof createContext>>, sinceDays: 
         ? 'sources.subscriptions_inbox.enabled is false, or no email set in tenant.yaml'
         : 'GMAIL_APP_PASSWORD is not set in .env',
       run: async () => {
-        const { email, label } = sources.subscriptions_inbox;
+        const { email, label, min_words, exclude_senders } = sources.subscriptions_inbox;
         const messages = await fetchPostIdeasEmails({
           email,
           appPassword: ctx.env.gmailAppPassword!,
           label,
           sinceDays,
+          minWords: min_words,
+          excludeSenders: exclude_senders,
+          onSkip: (reason) => info(`    ${style.dim(`skipped: ${reason}`)}`),
         });
         return messages.map((m) => ({
           reference: m.messageId,

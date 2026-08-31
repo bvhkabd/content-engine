@@ -58,7 +58,15 @@ export interface CriticThresholds {
 }
 
 export interface SourcesConfig {
-  subscriptions_inbox: { enabled: boolean; email: string; label: string };
+  subscriptions_inbox: {
+    enabled: boolean;
+    email: string;
+    label: string;
+    /** Prose-word floor; below this a message is platform chrome, not content. */
+    min_words: number;
+    /** From-header substrings to drop, e.g. "no-reply@substack.com". */
+    exclude_senders: string[];
+  };
   transcripts: { enabled: boolean; type: string; folder_id: string };
   dossiers: { enabled: boolean; folder_id: string; keywords: string[] };
 }
@@ -290,7 +298,9 @@ function parseSources(value: unknown): SourcesConfig {
     subscriptions_inbox: {
       enabled: inbox.enabled !== false && String(inbox.email ?? '') !== '',
       email: String(inbox.email ?? ''),
-      label: String(inbox.label ?? '#Postideas'),
+      label: String(inbox.label ?? 'INBOX'),
+      min_words: Number(inbox.min_words ?? 200),
+      exclude_senders: asStringArray(inbox.exclude_senders),
     },
     transcripts: {
       enabled: transcripts.enabled !== false,
