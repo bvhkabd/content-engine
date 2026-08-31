@@ -92,7 +92,13 @@ export async function dailyOracle(options: OracleOptions): Promise<OracleResult>
     if (options.dryRun) {
       warn('Dry run — nothing written to the sheet.');
       records.forEach((r, i) => info(`  ${r.score.toFixed(1).padStart(4)}  ${r.brand.padEnd(6)} ${r.topic}  ${style.dim(ranked[i]!.rationale)}`));
-      await finish(ctx, now, { scanned: documents.length, found: records.length, appended: 0, spikes: records }, vault);
+      await finish(
+        ctx,
+        now,
+        { scanned: documents.length, found: records.length, appended: 0, spikes: records },
+        vault,
+        true,
+      );
       return { scanned: documents.length, found: records.length, appended: 0, spikes: records };
     }
 
@@ -398,14 +404,20 @@ async function finish(
   now: Date,
   result: { scanned: number; found: number; appended: number; spikes: SpikeRecord[] },
   vaultAfter: SpikeRecord[],
+  dryRun = false,
 ): Promise<void> {
   // The heartbeat the watchdog looks for. Written last, so it only appears
   // when the run actually completed.
   ctx.log.info(heartbeatLine('oracle'));
 
   const top = topSpikes(vaultAfter, ctx.config.oracle.top_n);
+  // In a dry run nothing is appended, so reporting the appended count as the
+  // finding reads as "found nothing" when candidates were in fact found.
+  const headline = dryRun
+    ? `Oracle dry run: ${result.found} candidate spike(s) from ${result.scanned} documents. Nothing written.`
+    : `Oracle found ${result.appended} new spikes (${result.scanned} documents scanned).`;
   const lines = [
-    `Oracle found ${result.appended} new spikes (${result.scanned} documents scanned).`,
+    headline,
     '',
     `Top ${top.length} refreshed:`,
     ...top.map((s, i) => `${i + 1}. [${s.brand}] ${s.topic} — ${s.angle} (${s.score.toFixed(1)})`),
@@ -416,7 +428,9 @@ async function finish(
 
   const author = getAuthor(ctx.config, ctx.config.default_author);
   await notify(ctx.env, ctx.log, {
-    subject: `Oracle: ${result.appended} new spikes, top ${top.length} refreshed`,
+    subject: dryRun
+      ? `Oracle dry run: ${result.found} candidate spike(s), nothing written`
+      : `Oracle: ${result.appended} new spikes, top ${top.length} refreshed`,
     body: lines.join('\n'),
     ...(author.email ? { to: author.email } : {}),
   });
