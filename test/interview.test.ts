@@ -115,6 +115,7 @@ describe('nextQuestionPrompt', () => {
     channel: config.channels['website-article']!,
     voice: '',
     redlines: '',
+    redline_lessons: '',
     positioning: 'Operating model consultancy.',
     audiences: 'COOs.',
     ctas: '',

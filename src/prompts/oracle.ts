@@ -21,7 +21,9 @@ const SPIKE_SHAPE = `{
       "timeliness": "string — one line on why this is worth writing now",
       "novelty": 0.0,
       "specificity": 0.0,
-      "relevance": 0.0
+      "relevance": 0.0,
+      "boundary": "clear",
+      "boundary_note": "string — if boundary is \\"check\\", the one thing to look at; otherwise \\"\\""
     }
   ]
 }`;
@@ -54,7 +56,13 @@ export interface SourceItem {
 export function extractSpikesPrompt(
   items: SourceItem[],
   config: TenantConfig,
-  reference: { audiences: string; positioning: string; seasonality: string },
+  reference: {
+    audiences: string;
+    positioning: string;
+    seasonality: string;
+    redlines: string;
+    redlineLessons: string;
+  },
   existingTopics: string[],
 ): string {
   const pillars = [...new Set(Object.values(config.brands).flatMap((b) => b.pillars))];
@@ -77,6 +85,12 @@ export function extractSpikesPrompt(
     optionalSection('Audiences', reference.audiences),
     optionalSection('Positioning', reference.positioning),
     optionalSection('Seasonality — what is timely right now', reference.seasonality),
+    optionalSection('Boundaries — what this author will not publish', reference.redlines),
+    optionalSection(
+      'Boundary rulings — actual calls the author has made. These are more specific ' +
+        'than the policy above and OVERRIDE it wherever they disagree',
+      reference.redlineLessons,
+    ),
     existingTopics.length
       ? section(
           'Already in the vault — do not propose these again',
@@ -91,6 +105,12 @@ export function extractSpikesPrompt(
       '- relevance: fit with the positioning, audiences and pillars.',
       '',
       'Assign each spike to exactly one active brand.',
+      'Set boundary to "check" ONLY if writing this spike would require the author to do the ' +
+        'thing the boundaries forbid — not merely because the subject matter is near one. ' +
+        'A public-sector or regulated example used analytically is normal material. ' +
+        'Read the boundary rulings before deciding; they show where the line actually sits. ' +
+        'When boundary is "check", boundary_note states the single specific concern in one line. ' +
+        'Do not drop a spike for boundary reasons — flag it and let the author decide.',
       'Set source_index to the number of the source the spike came from, as headed above ' +
         '("Source 1", "Source 2", …). This is how the spike is traced back and deduplicated, ' +
         'so it must be right. If a spike genuinely draws on more than one source, name the primary one.',

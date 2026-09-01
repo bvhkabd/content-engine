@@ -29,6 +29,8 @@ export interface BrandConfig {
   positioning_file: string;
   audiences_file: string;
   ctas_file: string;
+  /** Accumulated boundary rulings; takes precedence over redlines_file. */
+  redline_lessons_file: string;
   pillars: string[];
 }
 
@@ -242,6 +244,7 @@ function parseBrands(
       positioning_file: String(b.positioning_file ?? `positioning-${slug}.md`),
       audiences_file: String(b.audiences_file ?? `audiences-${slug}.md`),
       ctas_file: String(b.ctas_file ?? `ctas-${slug}.md`),
+      redline_lessons_file: String(b.redline_lessons_file ?? `redline-lessons-${slug}.md`),
       pillars: asStringArray(b.pillars),
     };
   }
@@ -395,6 +398,7 @@ export interface BrandContext {
   channel: ChannelConfig;
   voice: string;
   redlines: string;
+  redline_lessons: string;
   positioning: string;
   audiences: string;
   ctas: string;
@@ -426,9 +430,10 @@ export async function loadBrandContext(
   const channel = getChannel(config, channelKey);
   const t = config.tenant;
 
-  const [voice, redlines, positioning, audiences, ctas, lessons, seasonality] = await Promise.all([
+  const [voice, redlines, redlineLessons, positioning, audiences, ctas, lessons, seasonality] = await Promise.all([
     readOptional(storage, t, brand.voice_file),
     readOptional(storage, t, brand.redlines_file),
+    readOptional(storage, t, brand.redline_lessons_file),
     readOptional(storage, t, brand.positioning_file),
     readOptional(storage, t, brand.audiences_file),
     readOptional(storage, t, brand.ctas_file),
@@ -436,7 +441,19 @@ export async function loadBrandContext(
     readOptional(storage, t, config.seasonality_file),
   ]);
 
-  return { brand, author, channel, voice, redlines, positioning, audiences, ctas, lessons, seasonality };
+  return {
+    brand,
+    author,
+    channel,
+    voice,
+    redlines,
+    redline_lessons: redlineLessons,
+    positioning,
+    audiences,
+    ctas,
+    lessons,
+    seasonality,
+  };
 }
 
 /** Which reference files are missing — surfaced by `init` and `session`. */
@@ -451,6 +468,8 @@ export async function missingReferenceFiles(
     files.add(brand.positioning_file);
     files.add(brand.audiences_file);
     files.add(brand.ctas_file);
+    // redline_lessons_file is deliberately not required: a tenant with no
+    // rulings yet is a normal state, not a misconfiguration.
   }
   for (const author of Object.values(config.authors)) files.add(author.lessons_file);
 

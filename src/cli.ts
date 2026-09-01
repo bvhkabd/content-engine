@@ -15,6 +15,7 @@ import { dailyOracle } from './jobs/oracle.js';
 import { watchdog } from './jobs/watchdog.js';
 import { runDoctor } from './skills/doctor.js';
 import { runSources } from './skills/sources.js';
+import { runClassify } from './skills/classify.js';
 import { failure, style } from './ui/console.js';
 
 const program = new Command();
@@ -152,6 +153,24 @@ program
       tenant: options.tenant,
       dryRun: Boolean(options.dryRun),
       sinceDays: options.sinceDays,
+    });
+  });
+
+program
+  .command('classify')
+  .description('Record a boundary ruling on a spike, so the system learns where your line is')
+  .requiredOption('--tenant <name>', 'tenant key')
+  .requiredOption('--spike <id>', 'spike ID the ruling is about')
+  .option('--allow <reason>', 'this is fine to write, and why')
+  .option('--block <reason>', 'this crosses the line, and why')
+  .option('--brand <key>', 'override which brand\'s rulings file to write')
+  .action(async (options) => {
+    await runClassify({
+      tenant: options.tenant,
+      spikeId: options.spike,
+      allow: options.allow,
+      block: options.block,
+      brand: options.brand,
     });
   });
 

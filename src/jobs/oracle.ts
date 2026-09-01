@@ -315,6 +315,8 @@ function normaliseCandidates(
         novelty: Number(e.novelty ?? 0),
         specificity: Number(e.specificity ?? 0),
         relevance: Number(e.relevance ?? 0),
+        boundary: String(e.boundary ?? 'clear').toLowerCase() === 'check' ? 'check' : 'clear',
+        boundary_note: String(e.boundary_note ?? '').trim(),
         source: attributed?.kind ?? allKinds,
         source_ref: attributed?.reference ?? allRefs,
       };
@@ -339,7 +341,13 @@ function toSpikeRecord(scored: ScoredSpike, spikeId: string, date: string, autho
     score: scored.score,
     status: 'NEW',
     used_in: '',
-    notes: scored.rationale,
+    // Boundary concerns go in Notes rather than filtering the spike out: the
+    // author decides, and a flagged spike they disagree with is the signal for
+    // a new ruling in redline-lessons-{brand}.md.
+    notes:
+      scored.boundary === 'check' && scored.boundary_note
+        ? `${scored.rationale} | BOUNDARY? ${scored.boundary_note}`
+        : scored.rationale,
   };
 }
 
@@ -349,7 +357,13 @@ function toSpikeRecord(scored: ScoredSpike, spikeId: string, date: string, autho
 
 async function loadOracleReference(
   ctx: RunContext,
-): Promise<{ audiences: string; positioning: string; seasonality: string }> {
+): Promise<{
+  audiences: string;
+  positioning: string;
+  seasonality: string;
+  redlines: string;
+  redlineLessons: string;
+}> {
   const read = async (file: string): Promise<string> => {
     if (!file) return '';
     const path = TenantPaths.reference(ctx.tenant, file);
@@ -360,17 +374,25 @@ async function loadOracleReference(
   // Concatenate across active brands — the oracle works across the portfolio.
   const audiences: string[] = [];
   const positioning: string[] = [];
+  const redlines: string[] = [];
+  const rulings: string[] = [];
   for (const brand of Object.values(ctx.config.brands)) {
     const a = await read(brand.audiences_file);
     const p = await read(brand.positioning_file);
+    const r = await read(brand.redlines_file);
+    const l = await read(brand.redline_lessons_file);
     if (a) audiences.push(`### ${brand.key}\n${a}`);
     if (p) positioning.push(`### ${brand.key}\n${p}`);
+    if (r) redlines.push(`### ${brand.key}\n${r}`);
+    if (l) rulings.push(`### ${brand.key}\n${l}`);
   }
 
   return {
     audiences: audiences.join('\n\n'),
     positioning: positioning.join('\n\n'),
     seasonality: await read(ctx.config.seasonality_file),
+    redlines: redlines.join('\n\n'),
+    redlineLessons: rulings.join('\n\n'),
   };
 }
 

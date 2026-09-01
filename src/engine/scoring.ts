@@ -21,6 +21,9 @@ export interface CandidateSpike {
   relevance: number;
   source: string;
   source_ref: string;
+  /** Model's read on whether this brushes a redline. Advisory, never a filter. */
+  boundary?: 'clear' | 'check';
+  boundary_note?: string;
 }
 
 export interface ScoredSpike extends CandidateSpike {

@@ -28,6 +28,7 @@ export function tenantYaml(o: ScaffoldOptions): string {
     positioning_file: "positioning-${slug}.md"
     audiences_file: "audiences-${slug}.md"
     ctas_file: "ctas-${slug}.md"
+    redline_lessons_file: "redline-lessons-${slug}.md"
     pillars: []                            # e.g. ["operating model", "org design"]`;
     })
     .join('\n\n');
@@ -244,6 +245,28 @@ verbatim; the chosen CTA is recorded in the draft's Working Notes.
 `;
 }
 
+export function redlineLessonsTemplate(brand: string): string {
+  return `# Redline rulings — ${brand}
+
+Read by: oracle (boundary flagging), critic (Boundary Check).
+
+\`redlines-${brand.toLowerCase()}.md\` states the policy. This file is the case law:
+actual calls made on real spikes, with reasons. **Where the two disagree, this
+file wins** — a ruling on a real example beats a general principle.
+
+Record one whenever a boundary call comes out wrong in either direction:
+
+\`\`\`
+npm run cli -- classify --tenant <t> --spike SPIKE-... --allow "why this is fine"
+npm run cli -- classify --tenant <t> --spike SPIKE-... --block "why this is not"
+\`\`\`
+
+Empty is a normal starting state.
+
+---
+`;
+}
+
 export function lessonsTemplate(authorName: string, authorKey: string): string {
   return `# Lessons — ${authorName}
 
@@ -342,6 +365,7 @@ export function scaffoldFiles(o: ScaffoldOptions): Record<string, string> {
     files[`positioning-${slug}.md`] = positioningTemplate(brand);
     files[`audiences-${slug}.md`] = audiencesTemplate(brand);
     files[`ctas-${slug}.md`] = ctasTemplate(brand);
+    files[`redline-lessons-${slug}.md`] = redlineLessonsTemplate(brand);
   }
   return files;
 }

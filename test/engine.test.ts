@@ -67,6 +67,7 @@ const brandContext: BrandContext = {
   channel: tenantConfig.channels['website-article']!,
   voice: 'Blunt. Short sentences.',
   redlines: 'Never name clients.',
+  redline_lessons: '',
   positioning: 'Operating model consultancy.',
   audiences: 'COOs.',
   ctas: '- Book a diagnostic',

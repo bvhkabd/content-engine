@@ -198,3 +198,26 @@ describe('defaultAnchorToken', () => {
     expect(defaultAnchorToken('--')).toBe('ASSET');
   });
 });
+
+describe('redline rulings file', () => {
+  it('defaults to redline-lessons-{brand}.md', () => {
+    const config = parseTenantConfig('harish', MINIMAL);
+    expect(config.brands.ABD!.redline_lessons_file).toBe('redline-lessons-abd.md');
+  });
+
+  it('honours an override', () => {
+    const config = parseTenantConfig(
+      'harish',
+      `
+tenant: harish
+active_brands: [ABD]
+brands:
+  ABD:
+    redline_lessons_file: "boundary-calls.md"
+authors:
+  harish: {}
+`,
+    );
+    expect(config.brands.ABD!.redline_lessons_file).toBe('boundary-calls.md');
+  });
+});

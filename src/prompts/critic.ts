@@ -44,6 +44,11 @@ export function boundaryCheckPrompt(draft: DraftArtefact, ctx: BrandContext): st
     'Check this draft against the brand redlines and positioning.',
     section('Draft', draftBlock(draft)),
     section('Redlines — any violation is a hard fail', ctx.redlines),
+    optionalSection(
+      'Boundary rulings — calls the author has actually made. More specific than the ' +
+        'redlines above, and they OVERRIDE the policy wherever the two disagree',
+      ctx.redline_lessons,
+    ),
     section('Positioning', ctx.positioning),
     optionalSection('Audiences', ctx.audiences),
     [
